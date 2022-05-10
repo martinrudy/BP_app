@@ -1,12 +1,86 @@
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, Text, View, TextInput, Button } from "react-native";
-//import { Button } from "./src/Button";
 import RNBluetoothClassic from "react-native-bluetooth-classic";
 import { useEffect, useState, useCallback } from "react";
-import { Controller, useForm } from "react-hook-form";
+import axios from "axios";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from 'expo-file-system';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import Config from './Config';
+import HomeScreen from './HomeScreen';
+const Stack = createNativeStackNavigator();
+
+let rcv = 0;
 
 export default function App() {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator>
+        <Stack.Screen
+          name="Home"
+          component={HomeScreen}
+          //options={{ title: 'Welcome' }}
+        />
+        <Stack.Screen name="Config" component={Config} />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+
+/*const HomeScreen = ({ navigation }) => {
+  const handleDocumentSelection = async () => {
+    let result = await DocumentPicker.getDocumentAsync({});
+    //console.log(result);
+    FileSystem.readAsStringAsync(result.uri).then(cUri => {
+      let string = cUri.replace(/\"/g, "");
+      let arr = string.split("\n");
+      let headers = arr[0].split(",");
+      let objects = []
+      for (let i = 1; i < arr.length - 1; i++) {
+
+        if(arr[i] === ""){
+          console.log("prazdny riadok");
+          break;
+        }
+
+        let str = arr[i]
+        let obj = {}
+
+        let values = str.split(",")
+        for (let j = 0; j < headers.length; j++){
+          obj[headers[j]] = values[j];
+        }
+        objects.push(obj);
+      }
+      console.log(objects)
+    });
+  }
+  return (
+    <View style={styles.container}>
+        <Button
+          title="Set config"
+          onPress={() =>
+            navigation.navigate('Config')
+          }
+        />
+        <Text> </Text>
+        <Button
+          title="Pick blood pressure file"
+          onPress={handleDocumentSelection}
+          style={styles.buttonContainer}
+        />
+      </View>
+  );
+};
+
+
+const Config = ({ navigation, route }) => {
   const [device, setDevice] = useState();
+  const [conn, setCon] = useState("Waiting for BT connection");
+  const [fileResponse, setFileResponse] = useState([]);
+  let isConnected;
 
   // Tries to find and connect to arduino by device name
   // If the arduino is not found, does nothing
@@ -39,9 +113,23 @@ export default function App() {
     }
     try {
       const message = await device.read();
-      console.log(message)
+      //console.log(message)
       if (message) {
-        console.log(message.data);
+        rcv += 1;
+        console.log(message);
+        /*if (message.startsWith('{')){
+          rcv += 1;
+          //console.log("calling api");
+          /*let obj = JSON.parse(message);
+          //console.log(JSON.stringify(objekt));
+          const response = await axios.post("http://192.168.1.101:5000/upload", obj);
+          const data = response.data;
+          if (data.success) {
+            console.log("sent data successfully")
+          }
+          console.log(rcv);
+        }
+        console.log(rcv);
       }
     } catch (error) {
       console.log(error);
@@ -60,9 +148,12 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        let isConnected = await device.isConnected();
+        isConnected = await device.isConnected();
         if (!isConnected) {
           await device.connect();
+        }
+        else{
+          setCon("Connected");
         }
       } catch (error) {
         console.log(error);
@@ -70,28 +161,85 @@ export default function App() {
     })();
   }, [device]);
 
+  const sendDeviceData = useCallback(async (props) => {
+    console.log(props)
+    if (!device) {
+      console.log("Device not available yet");
+      return;
+    }
+    try {
+      const message = await device.write(props);
+      //console.log(message);
+      if (message) {
+        console.log("data sent");
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  }, [device]);
   
-  const [text, onChangeText] = useState("");
+  const [measure, onChangeMeasure] = useState("");
+  const [send, onChangeSend] = useState("");
+  const [tempObj, onChangeObj] = useState("");
+  const [oxygen, onChangeOxy] = useState("");
+  const [bpm, onChangeBpm] = useState("");
+
   const handleInput = async () => {
-    console.log(text)
+    let measMillis = measure*60000;
+    let sendMillis = send*60000;
+    if(isConnected){
+      let msg = {
+        "mea": measMillis,
+        "snd": sendMillis,
+        "tmp": tempObj,
+        "oxy": oxygen,
+        "bpm": bpm
+      }
+      console.log(msg)
+      sendDeviceData(JSON.stringify(msg))
+    }
   }
   return (
     <View style={styles.container}>
-      <Text>Oximeter interval</Text>
-      <Text>Temperature interval</Text>
-      <TextInput  style={styles.containerInput}
-                  placeholder="Type here"
-                  onChangeText={onChangeText}
-                  value={text}
-      />
-      <Button
-        title="Send"
-        onPress={handleInput}
-        style={styles.buttonContainer}
-      />
-    </View>
+        <Text>{conn}</Text>
+        <TextInput  style={styles.containerInput}
+                    keyboardType={'numeric'}
+                    placeholder="Measure minutes"
+                    onChangeText={onChangeMeasure}
+                    value={measure}
+        />
+        <TextInput  style={styles.containerInput}
+                    keyboardType={'numeric'}
+                    placeholder="Send data minutes"
+                    onChangeText={onChangeSend}
+                    value={send}
+        />
+        <TextInput  style={styles.containerInput}
+                    keyboardType={'numeric'}
+                    placeholder="Treshold ObjTemp"
+                    onChangeText={onChangeObj}
+                    value={tempObj}
+        />
+        <TextInput  style={styles.containerInput}
+                    keyboardType={'numeric'}
+                    placeholder="Treshold oxygen"
+                    onChangeText={onChangeOxy}
+                    value={oxygen}
+        />
+        <TextInput  style={styles.containerInput}
+                    keyboardType={'numeric'}
+                    placeholder="Treshold BPM"
+                    onChangeText={onChangeBpm}
+                    value={bpm}
+        />
+        <Button
+          title="Send"
+          onPress={handleInput}
+          style={styles.buttonContainer}
+        />
+      </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -104,13 +252,14 @@ const styles = StyleSheet.create({
     borderColor: "black",
     borderWidth: 2,
     fontSize: 17,
-    paddingBottom: 8,
-    width: 150,
+    margin: 8,
+    width: 200,
   },
   buttonContainer: {
     flexDirection: "row",
     marginTop: 32,
+    marginBottom: 32,
     alignItems: "center",
     justifyContent: "space-between",
   },
-});
+});*/
